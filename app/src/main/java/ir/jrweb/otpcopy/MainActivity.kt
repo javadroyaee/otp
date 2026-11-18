@@ -1,10 +1,12 @@
-﻿package ir.jrweb.otpcopy
+package ir.jrweb.otpcopy
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.Button
@@ -23,6 +25,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences("jrweb_otp_prefs", Context.MODE_PRIVATE)
+        val isEnabled = prefs.getBoolean("is_enabled", true)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -58,9 +61,14 @@ class MainActivity : AppCompatActivity() {
             text = "فعال بودن کپی خودکار  "
             setTextColor(Color.WHITE)
             textSize = 16f
-            isChecked = prefs.getBoolean("is_enabled", true)
+            isChecked = isEnabled
             setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean("is_enabled", isChecked).apply()
+                if (isChecked) {
+                    startMonitorService()
+                } else {
+                    stopMonitorService()
+                }
             }
         }
 
@@ -93,6 +101,20 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(root)
         updatePermissionStatus()
+
+        if (isEnabled && hasSmsPermission()) {
+            startMonitorService()
+        }
+    }
+
+    private fun startMonitorService() {
+        val intent = Intent(this, OtpMonitorService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    private fun stopMonitorService() {
+        val intent = Intent(this, OtpMonitorService::class.java)
+        stopService(intent)
     }
 
     private fun hasSmsPermission(): Boolean {
@@ -101,16 +123,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestSmsPermission() {
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS),
-            101
+        val permissions = mutableListOf(
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_SMS
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 101)
     }
 
     private fun updatePermissionStatus() {
         statusText.text = if (hasSmsPermission()) {
-            "وضعیت: آماده به کار (دسترسی پیامک فعال است)"
+            "وضعیت: آماده به کار (سرویس پس‌زمینه فعال است)"
         } else {
             "وضعیت: نیاز به تایید دسترسی پیامک"
         }
@@ -119,5 +144,9 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         updatePermissionStatus()
+        val prefs = getSharedPreferences("jrweb_otp_prefs", Context.MODE_PRIVATE)
+        if (hasSmsPermission() && prefs.getBoolean("is_enabled", true)) {
+            startMonitorService()
+        }
     }
 }
