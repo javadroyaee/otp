@@ -11,6 +11,8 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@drawable/ic_launcher_jrweb"
+        android:roundIcon="@drawable/ic_launcher_jrweb"
         android:label="JRweb OTP Copy"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
