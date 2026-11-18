@@ -1,4 +1,4 @@
-﻿package ir.jrweb.otpcopy
+package ir.jrweb.otpcopy
 
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.os.Handler
+import android.os.Looper
 import android.provider.Telephony
 import android.widget.Toast
 
@@ -23,16 +25,23 @@ class SmsReceiver : BroadcastReceiver() {
 
         val code = extractOtpCode(fullMessage) ?: return
 
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("JRweb OTP", code)
-        clipboard.setPrimaryClip(clip)
+        Handler(Looper.getMainLooper()).post {
+            try {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("JRweb OTP", code)
+                clipboard.setPrimaryClip(clip)
+            } catch (_: Exception) { }
 
-        try {
-            val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
-            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-        } catch (_: Exception) { }
+            try {
+                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    toneGen.release()
+                }, 250)
+            } catch (_: Exception) { }
 
-        Toast.makeText(context, "کد $code کپی شد (JRweb)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "کد $code کپی شد (JRweb)", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun extractOtpCode(message: String): String? {
@@ -41,12 +50,20 @@ class SmsReceiver : BroadcastReceiver() {
 
         val keywords = listOf(
             "رمز", "کد", "تایید", "تائید", "پویا", "یکبار", "ورود",
-            "otp", "code", "pass", "verify", "verification", "pin"
+            "عبور", "کلمه عبور", "پسورد", "پاسورد", "احراز", "فعال",
+            "شاپرک", "درگاه",
+            "otp", "code", "pass", "password", "passcode",
+            "verify", "verification", "pin", "auth", "token", "login", "2fa"
         )
         if (keywords.none { lower.contains(it) }) return null
 
-        val regex = Regex("""(?<!\d)\d{4,8}(?!\d)""")
-        return regex.find(normalized)?.value
+        // اولویت اول: کد عددی مستقل ۴ تا ۸ رقمی (بدون تداخل با تاریخ، مبلغ و شماره کارت)
+        val numericRegex = Regex("""(?<![\d.,/\-])\d{4,8}(?![\d.,/\-])""")
+        numericRegex.find(normalized)?.value?.let { return it }
+
+        // اولویت دوم: کد ترکیبی حروف و عدد ۴ تا ۸ کاراکتری (شامل حداقل یک عدد)
+        val alphaNumRegex = Regex("""(?<![A-Za-z0-9/\-.])(?=[A-Za-z0-9]{4,8}(?![A-Za-z0-9/\-.]))(?=.*\d)[A-Za-z0-9]{4,8}""")
+        return alphaNumRegex.find(normalized)?.value
     }
 
     private fun convertPersianDigitsToEnglish(input: String): String {
